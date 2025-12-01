@@ -1,6 +1,6 @@
 """Langfuse tracing setup and callback handler."""
 
-from langfuse.callback import CallbackHandler
+from langfuse.langchain import CallbackHandler
 from config import config
 
 

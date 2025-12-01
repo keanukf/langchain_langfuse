@@ -2,7 +2,7 @@
 
 from typing import Optional
 from langchain_ollama import ChatOllama
-from langfuse.callback import CallbackHandler
+from langfuse.langchain import CallbackHandler
 from config import config
 from src.prompts import get_summarization_prompt
 

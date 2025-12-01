@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from config import config
-from src.agent import summarize
+from src.agent import summarize as summarize_text
 from src.tracing import get_langfuse_handler
 
 app = typer.Typer(help="LangChain summarization agent with Langfuse tracing")
@@ -84,7 +84,7 @@ def summarize_cmd(
     # Perform summarization
     console.print("[yellow]Summarizing text...[/yellow]")
     try:
-        summary = summarize(input_text, langfuse_handler)
+        summary = summarize_text(input_text, langfuse_handler)
     except ConnectionError as e:
         console.print(f"[red]Connection Error: {e}[/red]")
         raise typer.Exit(1)
