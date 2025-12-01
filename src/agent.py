@@ -25,13 +25,14 @@ def create_summarization_chain():
     return chain
 
 
-def summarize(text: str, langfuse_handler: CallbackHandler) -> str:
+def summarize(text: str, langfuse_handler: CallbackHandler, trace_name: str = None) -> str:
     """
     Summarize the provided text using the summarization chain.
 
     Args:
         text: Input text to summarize
         langfuse_handler: Langfuse callback handler for tracing
+        trace_name: Optional trace name for Langfuse (default: None)
 
     Returns:
         Summary string in markdown format
@@ -45,10 +46,18 @@ def summarize(text: str, langfuse_handler: CallbackHandler) -> str:
 
     chain = create_summarization_chain()
 
+    # Prepare config with callbacks and metadata
+    invoke_config = {"callbacks": [langfuse_handler]}
+    if trace_name:
+        invoke_config["metadata"] = {
+            "trace_name": trace_name,
+            "session_id": trace_name,
+        }
+
     try:
         result = chain.invoke(
             {"text": text},
-            config={"callbacks": [langfuse_handler]},
+            config=invoke_config,
         )
 
         # Extract content from AIMessage

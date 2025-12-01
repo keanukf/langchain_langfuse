@@ -84,7 +84,7 @@ def summarize_cmd(
     # Perform summarization
     console.print("[yellow]Summarizing text...[/yellow]")
     try:
-        summary = summarize_text(input_text, langfuse_handler)
+        summary = summarize_text(input_text, langfuse_handler, trace_name=trace_id)
     except ConnectionError as e:
         console.print(f"[red]Connection Error: {e}[/red]")
         raise typer.Exit(1)
