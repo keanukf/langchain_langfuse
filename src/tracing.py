@@ -29,7 +29,7 @@ def get_langfuse_handler(
         release: Release/version identifier for tracking application versions
 
     Returns:
-        Configured CallbackHandler instance
+        Configured CallbackHandler instance with trace attributes stored for metadata injection
 
     Raises:
         ValueError: If Langfuse credentials are not configured
@@ -44,30 +44,55 @@ def get_langfuse_handler(
         host=config.LANGFUSE_HOST,
     )
 
-    # Build trace configuration with all attributes
-    trace_config = {}
-    if trace_name:
-        trace_config["name"] = trace_name
-    if session_id:
-        trace_config["session_id"] = session_id
-    if user_id:
-        trace_config["user_id"] = user_id
-    if environment:
-        trace_config["environment"] = environment
-    if tags:
-        trace_config["tags"] = tags
-    if metadata:
-        trace_config["metadata"] = metadata
-    if release:
-        trace_config["release"] = release
-
-    # Create handler with trace configuration
+    # Create handler - CallbackHandler constructor only accepts public_key, secret_key, host
+    # Trace attributes must be passed via metadata during chain invocation
     handler = CallbackHandler(
         public_key=config.LANGFUSE_PUBLIC_KEY,
         secret_key=config.LANGFUSE_SECRET_KEY,
         host=config.LANGFUSE_HOST,
-        **trace_config,
     )
 
+    # Store trace attributes on the handler object for later use in metadata
+    # These will be passed via metadata with langfuse_ prefixes during invocation
+    handler._langfuse_trace_name = trace_name
+    handler._langfuse_session_id = session_id
+    handler._langfuse_user_id = user_id
+    handler._langfuse_environment = environment
+    handler._langfuse_tags = tags
+    handler._langfuse_custom_metadata = metadata
+    handler._langfuse_release = release
+
     return handler
+
+
+def get_trace_metadata(handler: CallbackHandler) -> Dict[str, Any]:
+    """
+    Extract trace metadata from a Langfuse handler for use in chain invocation.
+
+    Args:
+        handler: CallbackHandler instance with stored trace attributes
+
+    Returns:
+        Dictionary of metadata with langfuse_ prefixes for trace attributes
+    """
+    metadata = {}
+
+    # Add trace attributes with langfuse_ prefixes
+    if hasattr(handler, "_langfuse_trace_name") and handler._langfuse_trace_name:
+        metadata["langfuse_name"] = handler._langfuse_trace_name
+    if hasattr(handler, "_langfuse_session_id") and handler._langfuse_session_id:
+        metadata["langfuse_session_id"] = handler._langfuse_session_id
+    if hasattr(handler, "_langfuse_user_id") and handler._langfuse_user_id:
+        metadata["langfuse_user_id"] = handler._langfuse_user_id
+    if hasattr(handler, "_langfuse_environment") and handler._langfuse_environment:
+        metadata["langfuse_environment"] = handler._langfuse_environment
+    if hasattr(handler, "_langfuse_tags") and handler._langfuse_tags:
+        metadata["langfuse_tags"] = handler._langfuse_tags
+    if hasattr(handler, "_langfuse_release") and handler._langfuse_release:
+        metadata["langfuse_release"] = handler._langfuse_release
+    if hasattr(handler, "_langfuse_custom_metadata") and handler._langfuse_custom_metadata:
+        # Merge custom metadata (without langfuse_ prefix for user-defined keys)
+        metadata.update(handler._langfuse_custom_metadata)
+
+    return metadata
 

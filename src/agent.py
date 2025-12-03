@@ -3,12 +3,15 @@
 from typing import Optional, List, Dict, Any
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+# Import create_tool_calling_agent - returns a Runnable that can be invoked directly
+from langchain.agents import create_tool_calling_agent
 from langfuse.langchain import CallbackHandler
 from config import config
 from src.prompts import get_summarization_prompt
 from src.tools import get_tools
+from src.tracing import get_trace_metadata
 
 
 def create_summarization_chain():
@@ -52,11 +55,16 @@ def summarize(text: str, langfuse_handler: CallbackHandler, trace_name: str = No
 
     # Prepare config with callbacks and metadata
     invoke_config = {"callbacks": [langfuse_handler]}
-    if trace_name:
-        invoke_config["metadata"] = {
-            "trace_name": trace_name,
-            "session_id": trace_name,
-        }
+    
+    # Get trace metadata from handler (includes langfuse_ prefixed attributes)
+    trace_metadata = get_trace_metadata(langfuse_handler)
+    if trace_metadata:
+        invoke_config["metadata"] = trace_metadata
+    else:
+        invoke_config["metadata"] = {}
+    # Also support legacy trace_name parameter for backward compatibility
+    if trace_name and "langfuse_name" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_name"] = trace_name
 
     try:
         result = chain.invoke(
@@ -82,7 +90,7 @@ def create_analysis_agent():
     Create an agent that can use tools to analyze text.
 
     Returns:
-        AgentExecutor configured with tools
+        Runnable agent configured with tools (can be invoked directly)
     """
     llm = ChatOllama(
         model=config.OLLAMA_MODEL,
@@ -106,10 +114,11 @@ Use the tools to gather information, then provide your analysis."""),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
+    # create_tool_calling_agent returns a Runnable that can be invoked directly
+    # No need for AgentExecutor wrapper
     agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
 
-    return agent_executor
+    return agent
 
 
 def analyze_text(
@@ -141,15 +150,22 @@ def analyze_text(
 
     # Prepare config with callbacks and metadata
     invoke_config = {"callbacks": [langfuse_handler]}
-    metadata = {}
-    if trace_name:
-        metadata["trace_name"] = trace_name
-    if session_id:
-        metadata["session_id"] = session_id
-    if metadata:
-        invoke_config["metadata"] = metadata
+    
+    # Get trace metadata from handler (includes langfuse_ prefixed attributes)
+    trace_metadata = get_trace_metadata(langfuse_handler)
+    if trace_metadata:
+        invoke_config["metadata"] = trace_metadata.copy()
+    else:
+        invoke_config["metadata"] = {}
+    
+    # Also support legacy parameters for backward compatibility
+    if trace_name and "langfuse_name" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_name"] = trace_name
+    if session_id and "langfuse_session_id" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_session_id"] = session_id
 
     try:
+        # The agent from create_tool_calling_agent expects input with "input" and "chat_history"
         result = agent.invoke(
             {
                 "input": f"Analyze this text in detail: {text}",
@@ -158,8 +174,29 @@ def analyze_text(
             config=invoke_config,
         )
 
+        # Extract analysis from result
+        # The agent returns messages, get the last message content
+        if isinstance(result, dict) and "messages" in result:
+            messages = result["messages"]
+            if messages:
+                last_message = messages[-1]
+                if hasattr(last_message, "content"):
+                    analysis = last_message.content
+                elif isinstance(last_message, dict):
+                    analysis = last_message.get("content", "")
+                else:
+                    analysis = str(last_message)
+            else:
+                analysis = str(result)
+        elif hasattr(result, "content"):
+            analysis = result.content
+        elif isinstance(result, dict):
+            analysis = result.get("output", result.get("content", str(result)))
+        else:
+            analysis = str(result)
+
         return {
-            "analysis": result.get("output", ""),
+            "analysis": analysis,
             "text_length": len(text),
         }
     except Exception as e:
@@ -229,13 +266,19 @@ def chat(
 
     # Prepare config with callbacks and metadata
     invoke_config = {"callbacks": [langfuse_handler]}
-    metadata = {}
-    if trace_name:
-        metadata["trace_name"] = trace_name
-    if session_id:
-        metadata["session_id"] = session_id
-    if metadata:
-        invoke_config["metadata"] = metadata
+    
+    # Get trace metadata from handler (includes langfuse_ prefixed attributes)
+    trace_metadata = get_trace_metadata(langfuse_handler)
+    if trace_metadata:
+        invoke_config["metadata"] = trace_metadata.copy()
+    else:
+        invoke_config["metadata"] = {}
+    
+    # Also support legacy parameters for backward compatibility
+    if trace_name and "langfuse_name" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_name"] = trace_name
+    if session_id and "langfuse_session_id" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_session_id"] = session_id
 
     try:
         result = llm.invoke(messages, config=invoke_config)
@@ -316,13 +359,19 @@ def rag_query(
 
     # Prepare config with callbacks and metadata
     invoke_config = {"callbacks": [langfuse_handler]}
-    metadata = {}
-    if trace_name:
-        metadata["trace_name"] = trace_name
-    if session_id:
-        metadata["session_id"] = session_id
-    if metadata:
-        invoke_config["metadata"] = metadata
+    
+    # Get trace metadata from handler (includes langfuse_ prefixed attributes)
+    trace_metadata = get_trace_metadata(langfuse_handler)
+    if trace_metadata:
+        invoke_config["metadata"] = trace_metadata.copy()
+    else:
+        invoke_config["metadata"] = {}
+    
+    # Also support legacy parameters for backward compatibility
+    if trace_name and "langfuse_name" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_name"] = trace_name
+    if session_id and "langfuse_session_id" not in invoke_config["metadata"]:
+        invoke_config["metadata"]["langfuse_session_id"] = session_id
 
     try:
         result = chain.invoke(
